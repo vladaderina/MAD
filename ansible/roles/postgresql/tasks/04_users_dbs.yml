@@ -1,0 +1,46 @@
+- name: Change postgres superuser password
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: postgres
+    password: "{{ vault_postgres_password }}"
+    role_attr_flags: "SUPERUSER,LOGIN"
+    encrypted: yes
+  no_log: true
+
+- name: Create PostgreSQL databases
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ item.name | default(item.databases | first) }}"
+    encoding: UTF8
+    lc_collate: "en_US.UTF-8"
+    lc_ctype: "en_US.UTF-8"
+    template: template0
+    state: "{{ item.state | default('present') }}"
+  loop: "{{ postgresql_users }}"
+  when: item.databases is defined
+
+- name: Create PostgreSQL users
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ item.name }}"
+    password: "{{ item.password | default(omit) }}"
+    encrypted: yes
+    state: "{{ item.state | default('present') }}"
+    role_attr_flags: "{{ item.role_attr_flags | default('LOGIN') }}"
+  loop: "{{ postgresql_users }}"
+  no_log: "{{ item.password is defined }}"
+
+- name: Grant database privileges
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    db: "{{ item.databases | first }}"
+    role: "{{ item.name }}"
+    type: database
+    privs: "{{ item.privileges | default(['ALL']) | join(',') }}"
+    state: "{{ item.state | default('present') }}"
+  loop: "{{ postgresql_users }}"
+  when: item.databases is defined

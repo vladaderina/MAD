@@ -1,0 +1,39 @@
+- name: Calculate memory parameters
+  ansible.builtin.set_fact:
+    pg_shared_buffers: "{{ ((ansible_memtotal_mb * 0.25) | round | int) }}MB"
+    pg_work_mem: "{{ (((ansible_memtotal_mb - (ansible_memtotal_mb * 0.25)) / (postgresql_max_connections | default(100)) * 0.75) | round | int) }}MB"
+    pg_effective_cache_size: "{{ ((ansible_memtotal_mb * 0.75) | round | int) }}MB"
+  when: 
+    - postgresql_shared_buffers == "auto"
+    - postgresql_work_mem == "auto"
+
+- name: Configure postgresql.conf
+  become: yes
+  ansible.builtin.template:
+    src: postgresql.conf.j2
+    dest: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    owner: postgres
+    group: postgres
+    mode: '0644'
+    backup: yes
+  notify: reload postgresql
+
+- name: Configure pg_hba.conf
+  become: yes
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: '0640'
+    backup: yes
+  notify: reload postgresql
+
+- name: Configure environment variables
+  become: yes
+  ansible.builtin.template:
+    src: environment.j2
+    dest: "/etc/postgresql/{{ postgresql_version }}/main/environment"
+    owner: postgres
+    group: postgres
+    mode: '0644'

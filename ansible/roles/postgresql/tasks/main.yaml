@@ -1,0 +1,11 @@
+- name: Include OS setup tasks
+  ansible.builtin.import_tasks: 01_os_setup.yml
+
+- name: Include installation tasks
+  ansible.builtin.import_tasks: 02_install.yml
+
+- name: Include configuration tasks
+  ansible.builtin.import_tasks: 03_config.yml
+
+- name: Include users and databases tasks
+  ansible.builtin.import_tasks: 04_users_dbs.yml

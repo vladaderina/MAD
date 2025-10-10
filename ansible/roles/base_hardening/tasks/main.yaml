@@ -1,39 +1,56 @@
 ---
-- name: Update package cache
+- name: Отладка переменных для устранения неполадок
+  debug:
+    msg: |
+      system_optimization.enabled: {{ system_optimization.enabled | default('не определена') }}
+      memory_total_mb: {{ ansible_memtotal_mb | default('неизвестно') }}
+  when: false  # Установите true для отладки
+
+- name: Обновление кэша пакетов
   become: yes
   apt:
     update_cache: yes
     cache_valid_time: 3600
 
-- name: Upgrade all packages
+- name: Обновление всех пакетов
   become: yes
   apt:
     upgrade: dist
     autoremove: yes
     autoclean: yes
 
-- name: Install unattended-upgrades
+- name: Установка автоматических обновлений
   become: yes
   apt:
     name: unattended-upgrades
     state: present
 
-- name: Configure automatic updates
+- name: Настройка автоматических обновлений
   become: yes
   copy:
     src: files/20auto-upgrades
     dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: '0644'
 
-- name: Configure sysctl settings
+- name: Проверка расчета настроек sysctl
+  set_fact:
+    final_sysctl_settings: "{{ postgresql_sysctl_settings | default({}) }}"
+
+- name: Настройка параметров sysctl
   become: yes
   sysctl:
     name: "{{ item.key }}"
     value: "{{ item.value }}"
     state: present
     reload: yes
-  loop: "{{ sysctl_settings | dict2items }}"
+  loop: "{{ final_sysctl_settings | dict2items }}"
+  when: 
+    - system_optimization.enabled | default(true)
+    - final_sysctl_settings | length > 0
 
-- name: Disable unnecessary services
+- name: Отключение ненужных сервисов
   become: yes
   systemd:
     name: "{{ item }}"
@@ -48,10 +65,9 @@
     - nfs-kernel-server
     - bind9
     - vsftpd
-    - telnetd
   ignore_errors: yes
 
-- name: Remove unnecessary packages
+- name: Удаление ненужных пакетов
   become: yes
   apt:
     name: "{{ item }}"
@@ -63,5 +79,4 @@
     - rsh-client
     - rsh-server
     - talk
-    - finger
   ignore_errors: yes

@@ -1,4 +1,5 @@
 venv
+ansible/vault_password.txt
 helm/storage/charts
 helm/storage/.helmignore
 helm/storage/Chart.lock

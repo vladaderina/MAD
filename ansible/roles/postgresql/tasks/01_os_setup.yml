@@ -1,0 +1,42 @@
+- name: Create PostgreSQL group
+  become: yes
+  ansible.builtin.group:
+    name: postgres
+    state: present
+    system: yes
+
+- name: Create PostgreSQL user
+  become: yes
+  ansible.builtin.user:
+    name: postgres
+    group: postgres
+    home: /var/lib/postgresql
+    shell: /bin/bash
+    system: yes
+    create_home: yes
+
+- name: Configure OS limits for PostgreSQL
+  become: yes
+  ansible.builtin.template:
+    src: limits.conf.j2
+    dest: /etc/security/limits.d/postgresql.conf
+    backup: yes
+  when: postgresql_os_optimization
+
+- name: Configure kernel parameters
+  become: yes
+  ansible.builtin.copy:
+    src: sysctl
+    dest: /etc/sysctl.d/99-postgresql.conf
+    backup: yes
+  when: postgresql_os_optimization
+  notify: reload sysctl
+
+- name: Ensure data directory exists
+  become: yes
+  ansible.builtin.file:
+    path: /var/lib/postgresql/{{ postgresql_version }}/main
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0700'

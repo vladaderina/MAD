@@ -1,5 +1,15 @@
 - name: restart postgresql
   become: yes
-  service:
+  ansible.builtin.service:
     name: postgresql
     state: restarted
+
+- name: reload postgresql
+  become: yes
+  ansible.builtin.service:
+    name: postgresql
+    state: reloaded
+
+- name: reload sysctl
+  become: yes
+  ansible.builtin.command: sysctl -p

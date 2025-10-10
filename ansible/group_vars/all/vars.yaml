@@ -1,0 +1,210 @@
+# ==============================================================================
+# БАЗОВЫЕ НАСТРОЙКИ СИСТЕМЫ
+# ==============================================================================
+
+# Версии ПО
+postgresql_version: 14
+service_versions:
+  grafana: "latest"
+  victoriametrics: "v1.93.0"
+  loki: "v2.9.0"
+
+# Порты сервисов
+service_ports:
+  ssh: 22
+  postgresql: 5432
+  grafana: 3000
+  victoriametrics: 8428
+  loki: 3100
+  k3s_api: 6443
+  http: 80
+  https: 443
+
+# ==============================================================================
+# СЕТЕВЫЕ НАСТРОЙКИ И БЕЗОПАСНОСТЬ
+# ==============================================================================
+
+# Сетевые сегменты
+network_segments:
+  internal: "192.168.1.0/24"
+  vpn: "10.8.0.0/24"
+  admin: "10.0.0.0/24"
+
+# IP-адреса для доступа
+security_access:
+  admin_ips:
+    - "192.168.1.100/32"
+    - "10.0.0.50/32"
+    - "94.181.45.153/32"
+  monitoring_ips:
+    - "192.168.1.50/32"
+  service_ips:
+    victoriametrics: "192.168.1.50/32"
+    postgresql: "127.0.0.1"
+
+# Настройки фаервола
+firewall:
+  enabled: true
+  default_policy: "drop"
+  rules:
+    - { port: "{{ service_ports.ssh }}", protocol: "tcp", description: "SSH", allowed_ips: "{{ security_access.admin_ips }}", state: "allow" }
+    - { port: "{{ service_ports.http }}", protocol: "tcp", description: "HTTP", allowed_ips: "{{ security_access.admin_ips }}", state: "allow" }
+    - { port: "{{ service_ports.https }}", protocol: "tcp", description: "HTTPS", allowed_ips: "{{ security_access.admin_ips }}", state: "allow" }
+    - { port: "{{ service_ports.grafana }}", protocol: "tcp", description: "Grafana", allowed_ips: "{{ security_access.admin_ips }}", state: "allow" }
+    - { port: "{{ service_ports.victoriametrics }}", protocol: "tcp", description: "VictoriaMetrics", allowed_ips: "{{ security_access.monitoring_ips }}", state: "allow" }
+    - { port: "{{ service_ports.loki }}", protocol: "tcp", description: "Loki", allowed_ips: ["127.0.0.1"], state: "allow" }
+    - { port: "{{ service_ports.postgresql }}", protocol: "tcp", description: "PostgreSQL", allowed_ips: ["127.0.0.1"], state: "allow" }
+
+# Настройки безопасности
+security:
+  ssh_key_only: true
+  enable_fail2ban: true
+  enable_2fa: true
+  install_k3s: false
+
+# ==============================================================================
+# ОПТИМИЗАЦИЯ ОС И ЯДРА
+# ==============================================================================
+
+# Общие настройки оптимизации
+system_optimization:
+  enabled: true
+  auto_optimize: true
+  large_server_threshold_mb: 32768
+
+# Базовые настройки безопасности ядра
+sysctl_security:
+  net.ipv4.conf.all.rp_filter: 1
+  net.ipv4.tcp_syncookies: 1
+  net.ipv4.ip_forward: 0
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.icmp_echo_ignore_broadcasts: 1
+  net.ipv4.icmp_ignore_bogus_error_responses: 1
+
+# Оптимизация для PostgreSQL
+sysctl_postgresql:
+  # Виртуальная память
+  vm.swappiness: 1
+  vm.dirty_background_ratio: 5
+  vm.dirty_ratio: 10
+  vm.overcommit_memory: 2
+  vm.overcommit_ratio: 80
+  
+  # Сетевая подсистема
+  net.core.rmem_default: 262144
+  net.core.rmem_max: 4194304
+  net.core.wmem_default: 262144
+  net.core.wmem_max: 1048576
+  net.ipv4.tcp_rmem: "4096 87380 4194304"
+  net.ipv4.tcp_wmem: "4096 16384 4194304"
+  
+  # Файловая система
+  fs.file-max: 2097152
+  kernel.shmall: "{{ (ansible_memtotal_mb * 0.75) | int }}"
+  kernel.shmmax: "{{ (ansible_memtotal_mb * 0.75 * 1024 * 1024) | int }}"
+
+# Дополнительная оптимизация для больших серверов
+sysctl_large_server:
+  vm.dirty_background_bytes: 134217728
+  vm.dirty_bytes: 536870912
+  net.core.netdev_max_backlog: 300000
+  net.core.somaxconn: 65535
+
+# ==============================================================================
+# POSTGRESQL КОНФИГУРАЦИЯ
+# ==============================================================================
+
+# Основные настройки PostgreSQL
+postgresql_config:
+  version: "{{ postgresql_version }}"
+  data_dir: "/var/lib/postgresql/{{ postgresql_version }}/main"
+  listen_addresses: "127.0.0.1"
+  port: "{{ service_ports.postgresql }}"
+  
+  # Настройки памяти (авторасчет)
+  shared_buffers: "auto"      # 25% от RAM
+  work_mem: "auto"            # Динамический расчет
+  effective_cache_size: "auto" # 75% от RAM
+  
+  # WAL и репликация
+  wal_level: "replica"
+  max_wal_senders: 10
+  max_replication_slots: 10
+  
+  # Производительность
+  random_page_cost: 1.1
+  effective_io_concurrency: 200
+
+# Пользователи и базы данных PostgreSQL
+postgresql_users:
+  - name: "grafana"
+    password: "{{ vault_grafana_db_password }}"
+    databases: ["grafana"]
+    privileges: ["CONNECT", "TEMPORARY"]
+    state: "present"
+    
+  - name: "mad"
+    password: "{{ vault_mad_db_password }}"
+    databases: ["mad"]
+    privileges: ["ALL"]
+    state: "present"
+
+# ==============================================================================
+# MONITORING СТЕК
+# ==============================================================================
+
+# VictoriaMetrics
+victoriametrics:
+  enabled: true
+  port: "{{ service_ports.victoriametrics }}"
+  retention_period: "1"
+  allowed_ips: "{{ security_access.monitoring_ips }}"
+  external_access: false
+
+# Grafana
+grafana:
+  enabled: true
+  port: "{{ service_ports.grafana }}"
+  database: "grafana"
+  admin_password: "{{ vault_grafana_admin_password }}"
+
+# Loki
+loki:
+  enabled: true
+  port: "{{ service_ports.loki }}"
+
+# ==============================================================================
+# СЕКРЕТЫ
+# ==============================================================================
+
+# Пароли для PostgreSQL
+vault_postgres_password: "{{ postgres_secrets.vault_postgres_password | default('change_me_please') }}"
+vault_mad_db_password: "{{ postgres_secrets.vault_mad_db_password | default('change_me_please') }}"
+vault_grafana_db_password: "{{ postgres_secrets.vault_grafana_db_password | default('change_me_please') }}"
+vault_grafana_admin_password: "{{ postgres_secrets.vault_grafana_admin_password | default('change_me_please') }}"
+
+# ==============================================================================
+# ДИНАМИЧЕСКИЕ ПЕРЕМЕННЫЕ (авторасчет)
+# ==============================================================================
+
+# Автоматический расчет на основе фактов Ansible
+postgresql_limits:
+  nofile: "{{ 131072 if ansible_memtotal_mb >= 16000 else 65536 }}"
+  nproc: "{{ 32768 if ansible_memtotal_mb >= 16000 else 16384 }}"
+  memlock: "unlimited"
+  stack: 8192
+
+# Комбинированные настройки sysctl
+postgresql_sysctl_settings: >
+  {{
+    sysctl_security | 
+    combine(sysctl_postgresql) |
+    combine(
+      sysctl_large_server if 
+      ansible_memtotal_mb >= system_optimization.large_server_threshold_mb and 
+      system_optimization.auto_optimize 
+      else {}
+    )
+  }}

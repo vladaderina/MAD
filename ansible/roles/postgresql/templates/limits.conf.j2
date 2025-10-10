@@ -1,0 +1,29 @@
+# ====================
+# Limits Configuration for PostgreSQL
+# Managed by Ansible
+# ====================
+
+# Лимиты для пользователя postgres
+postgres soft nofile 65536
+postgres hard nofile 65536
+postgres soft nproc 16384
+postgres hard nproc 16384
+postgres soft memlock unlimited
+postgres hard memlock unlimited
+postgres soft stack 8192
+postgres hard stack 8192
+
+# Лимиты для группы postgres (на всякий случай)
+@postgres soft nofile 65536
+@postgres hard nofile 65536
+@postgres soft nproc 16384
+@postgres hard nproc 16384
+@postgres soft memlock unlimited
+@postgres hard memlock unlimited
+
+{% if postgresql_limits_custom is defined %}
+# Пользовательские лимиты
+{% for limit in postgresql_limits_custom %}
+{{ limit.user | default('postgres') }} {{ limit.type | default('soft') }} {{ limit.domain }} {{ limit.value }}
+{% endfor %}
+{% endif %}
